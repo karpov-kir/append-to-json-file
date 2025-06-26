@@ -1,0 +1,7 @@
+node_modules
+.DS_Store
+dist
+bigJsonFile.json
+/coverage
+test-file-*.json
+test-report.xml
