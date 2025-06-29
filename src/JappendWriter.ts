@@ -25,6 +25,9 @@ export type MinimalFileHandle = Pick<FileHandle, 'read' | 'write' | 'close' | 't
  * @property {boolean} [pretty=true] - Whether to format the JSON with indentation.
  * @property {number} [indent=2] - The number of spaces to use for indentation if `pretty` is `true`.
  * @property {boolean} [initArray=true] - Whether to initialize the file with an empty array if the file is empty or does not exist.
+ * @property {boolean} [suppressThresholdFlushErrors=false] - if `true`, errors thrown during automatic flushes triggered by the buffer threshold writes
+ * are suppressed and logged instead of thrown (enables fire-and-forget pattern). Calling `flush` will still throw errors.
+ * @property {Object} [logger] - Custom logger for error reporting. Should have an `error` method. Defaults to `console.error`.
  */
 export interface WriterOptions {
   bufferFlushThreshold?: number;
@@ -32,6 +35,14 @@ export interface WriterOptions {
   pretty?: boolean;
   indent?: number;
   initArray?: boolean;
+  suppressThresholdFlushErrors?: boolean;
+  logger?: {
+    /**
+     * Called when an error occurs during a threshold-triggered flush if `suppressThresholdFlushErrors` is `true`.
+     * @param {string} message - The error message to log.
+     */
+    error: (message: string) => void;
+  };
 }
 
 /**
@@ -66,6 +77,10 @@ export class JappendWriter {
       initArray: options.initArray ?? true,
       fileOpen: options.fileOpen ?? fs.open,
       bufferFlushThreshold: options.bufferFlushThreshold ?? 1,
+      suppressThresholdFlushErrors: options.suppressThresholdFlushErrors ?? false,
+      logger: options.logger ?? {
+        error: (message: string) => console.error(message),
+      },
     };
   }
 
@@ -74,7 +89,7 @@ export class JappendWriter {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  append(newData: any) {
+  async append(newData: any) {
     if (this.isShutdown) {
       return;
     }
@@ -82,7 +97,15 @@ export class JappendWriter {
     this.buffer.push(newData);
 
     if (this.isFull) {
-      return this.flush();
+      try {
+        await this.flush();
+      } catch (error) {
+        if (!this.options.suppressThresholdFlushErrors) {
+          throw error;
+        }
+
+        this.options.logger.error(`Error flushing buffer on threshold: ${error}`);
+      }
     }
   }
 

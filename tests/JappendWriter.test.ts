@@ -286,3 +286,49 @@ describe('Flushing', () => {
     });
   });
 });
+
+describe('Fire-and-forget', () => {
+  test('allows appending without awaiting each call', async () => {
+    const inMemoryFileHandle = new InMemoryFileHandle();
+    const jappendWriter = newJappendWriter('/file', {
+      fileOpen: async () => inMemoryFileHandle,
+      bufferFlushThreshold: 2,
+      suppressThresholdFlushErrors: true,
+    });
+
+    jappendWriter.append({ test: [1] });
+    jappendWriter.append({ test: [2] });
+
+    await jappendWriter.flush();
+
+    expect(inMemoryFileHandle.content).toBe(JSON.stringify([{ test: [1] }, { test: [2] }], null, 2));
+  });
+
+  test('suppresses append errors in fire-and-forget mode', async () => {
+    const inMemoryFileHandle = new InMemoryFileHandle();
+    const logger = {
+      error: vi.fn(),
+    };
+    const jappendWriter = newJappendWriter('/file', {
+      fileOpen: async () => inMemoryFileHandle,
+      bufferFlushThreshold: 2,
+      suppressThresholdFlushErrors: true,
+      logger,
+    });
+
+    vi.spyOn(inMemoryFileHandle, 'write').mockRejectedValueOnce(new Error('Write error'));
+
+    // Should not throw unhandled errors
+    jappendWriter.append({ test: [1] });
+    // This one should trigger flushing and throw an error but suppress it
+    await jappendWriter.append({ test: [2] });
+
+    expect(inMemoryFileHandle.write).toHaveBeenCalledTimes(1);
+    expect(inMemoryFileHandle.content).toBe('');
+
+    await jappendWriter.flush();
+
+    expect(inMemoryFileHandle.content).toBe(JSON.stringify([{ test: [1] }, { test: [2] }], null, 2));
+    expect(logger.error).toHaveBeenCalledWith('Error flushing buffer on threshold: Error: Write error');
+  });
+});

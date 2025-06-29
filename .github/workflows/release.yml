@@ -1,5 +1,5 @@
 name: Release
-run-name: Release on ${{ github.ref }} branch
+run-name: Release ${{ inputs.version }} on ${{ github.ref }} branch
 
 on:
   workflow_dispatch:

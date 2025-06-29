@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Fire-and-forget mode
+
 ### Fixed
 
 - Refine NPM files to publish pattern to include `InMemoryFileHandle`

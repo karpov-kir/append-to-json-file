@@ -7,7 +7,7 @@ const bigJsonFilePath = path.join(__dirname, 'bigJsonFile.json');
 const initialEntryCount = 200000;
 const entryCountToWrite = 50000;
 
-const type = process.argv[2] as 'default' | 'library' | 'buffer' | 'infinite-buffer' | undefined;
+const type = process.argv[2] as 'default' | 'library' | 'buffer' | 'infinite-buffer' | 'fire-and-forget' | undefined;
 
 if (!type) {
   throw new Error(
@@ -101,6 +101,24 @@ async function appendBigJsonFileUsingLibrary() {
 
 const bufferFlushThreshold = 10000;
 
+async function appendBigJsonFileUsingLibraryFireAndForget() {
+  const jappendWriter = newJappendWriter(bigJsonFilePath, {
+    bufferFlushThreshold,
+    suppressThresholdFlushErrors: true,
+  });
+
+  await appendToBigJsonFile({
+    appendStrategy: async (i) => {
+      // Fire-and-forget: intentionally do not await the append call
+      jappendWriter.append(createEntry(i));
+    },
+    onDone: async () => {
+      // Ensure all buffered entries are written
+      await jappendWriter.flush();
+    },
+  });
+}
+
 async function createBigJsonFileUsingLibraryWithBuffer() {
   const jappendWriter = newJappendWriter(bigJsonFilePath, {
     bufferFlushThreshold,
@@ -164,6 +182,13 @@ if (type === 'default') {
 
 if (type === 'library') {
   await benchmark('Writing to a big file line by line using `jappend`', appendBigJsonFileUsingLibrary);
+}
+
+if (type === 'fire-and-forget') {
+  await benchmark(
+    `Writing to a big file line by line using \`JappendWriter\` with ${bufferFlushThreshold} entry buffer (fire-and-forget)`,
+    appendBigJsonFileUsingLibraryFireAndForget,
+  );
 }
 
 if (type === 'buffer') {

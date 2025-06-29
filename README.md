@@ -59,6 +59,40 @@ for (let i = 0; i < 10100; i++) {
 await jappendWriter.flush({ shutdown: true });
 ```
 
+### Fire-and-Forget Mode (Suppressing Automatic Buffer Flush Errors)
+
+For scenarios where you do not want to await every `append` call, you can enable fire-and-forget mode by setting `suppressThresholdFlushErrors: true`. This will suppress and log errors that occur during automatic buffer flushes (when the buffer threshold is reached). Note that errors will still be thrown if you explicitly call `flush`.
+
+```typescript
+import { newJappendWriter } from 'jappend';
+
+const writer = newJappendWriter('data.json', {
+  bufferFlushThreshold: 1000,
+  suppressThresholdFlushErrors: true, // Enable fire-and-forget
+});
+
+// Some event emitter that generates data relative often
+eventEmitter.on('some-event', (data) => {
+  // Append data without awaiting
+  writer.append({ data, timestamp: Date.now() })
+});
+
+// At the end, flush any remaining entries and handle errors
+function shutdown() {
+  writer.flush({ shutdown: true })
+    .then(() => {
+      process.exit(0);
+    })
+    .catch((error) => {
+      console.error('Failed to flush sensor data:', error);
+      process.exit(1);
+    });
+}
+
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
+```
+
 ### Configuration Options
 
 ```typescript
@@ -112,6 +146,9 @@ Creates a new `JappendWriter` instance for buffered operations.
 - `indent` (number, default: `2`): number of spaces for indentation when `pretty` is `true`
 - `initArray` (boolean, default: `true`): automatically initialize empty file with `[]` array
 - `fileOpen` (function, optional): custom file opener for simplified testing (defaults to `fs.open`)
+- `suppressThresholdFlushErrors` (boolean, default: `false`): if `true`, errors thrown during automatic flushes triggered by the buffer threshold writes
+  are suppressed and logged instead of thrown (enables fire-and-forget pattern). Calling `flush` will still throw errors.
+- `logger` (object, optional): custom logger with an `error` method for error reporting (defaults to `console.error`)
 
 ### `JappendWriter` Class Methods
 
@@ -130,15 +167,31 @@ Safe to call multiple times, it will only flush once.
 
 ```typescript
 const logger = newJappendWriter('logs.json', { 
-  bufferFlushThreshold: 100 
+  bufferFlushThreshold: 100,
+  suppressThresholdFlushErrors: true // Enable fire-and-forget behavior
 });
 
-await logger.append({
+// Somewhere in your application
+logger.append({
   level: 'info',
   message: 'User logged in',
   timestamp: new Date().toISOString(),
   userId: 123
 });
+
+function shutdown() {
+  logger.flush({ shutdown: true })
+    .then(() => {
+      process.exit(0);
+    })
+    .catch((error) => {
+      console.error('Failed to flush sensor data:', error);
+      process.exit(1);
+    });
+}
+
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
 ```
 
 ### Data Collection
@@ -150,31 +203,66 @@ const dataCollector = newJappendWriter('sensor-data.json', {
   pretty: false // Compact format for space efficiency
 });
 
+// Somewhere in your data collection loop
 await dataCollector.append({
   sensorId: 'temp-01',
   value: 23.5,
   timestamp: Date.now()
 });
+
+function shutdown() {
+  dataCollector.flush({ shutdown: true })
+    .then(() => {
+      process.exit(0);
+    })
+    .catch((error) => {
+      console.error('Failed to flush sensor data:', error);
+      process.exit(1);
+    });
+}
+
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
 ```
 
 ### Streaming Analytics
 
 ```typescript
+import { newJappendWriter } from 'jappend';
+import { JappendWriter } from 'jappend/JappendWriter';
+import { type TransformCallback, Writable } from 'stream';
+
+class AnalyticsWriterStream extends Writable {
+  private readonly writer: JappendWriter;
+
+  constructor(writer: JappendWriter) {
+    super({ objectMode: true });
+    this.writer = writer;
+  }
+
+  override _write(
+    event: { type: string; userId: string; timestamp: string; metadata: string },
+    encoding: BufferEncoding,
+    done: TransformCallback
+  ) {
+    this.writer
+      .append(event)
+      .then(() => done())
+      .catch((error) => done(new Error(`Failed to write event: ${error.message}`)));
+  }
+}
+
 const analytics = newJappendWriter('events.json', {
-  bufferFlushThreshold: 5000
+  bufferFlushThreshold: 5000,
 });
+const analyticsStream = new AnalyticsWriterStream(analytics);
 
-stream.on('data', async (event) => {
-  await analytics.append({
-    eventType: event.type,
-    userId: event.userId,
-    timestamp: event.timestamp,
-    metadata: event.data
-  });
-});
-
-stream.on('end', async () => {
-  await analytics.flush({ shutdown: true });
+someStream.pipe(analyticsStream).on('finish', async () => {
+  try {
+    await analytics.flush({ shutdown: true });
+  } catch (error) {
+    console.error('Failed to flush analytics data:', error);
+  }
 });
 ```
 
@@ -247,6 +335,7 @@ This library is designed for memory efficient scenarios. Here are benchmark resu
 | `JSON.stringify` (traditional) | 2037ms | 4528MB | Load entire file, parse, modify, stringify |
 | `JappendWriter` (buffered) | 637ms | 256MB | Buffered writes (10,000 entries) |
 | `JappendWriter` (infinite buffer) | 657ms | 870MB | Single flush at the end |
+| `JappendWriter` (fire-and-forget) | 695ms | 756MB | Buffered writes (10,000) entries fire-and-forget |
 | `jappend` (unbuffered) | 12381ms | 11MB | Write each entry individually |
 
 **Key takeaways:**
