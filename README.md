@@ -229,7 +229,7 @@ process.on('SIGTERM', shutdown);
 
 ```typescript
 import { newJappendWriter } from 'jappend';
-import { JappendWriter } from 'jappend/JappendWriter';
+import { JappendWriter } from 'jappend/dist/JappendWriter';
 import { type TransformCallback, Writable } from 'stream';
 
 class AnalyticsWriterStream extends Writable {
@@ -299,7 +299,7 @@ The library provides an `InMemoryFileHandle` class for testing purposes, which i
 
 ```typescript
 import { jappend } from 'jappend';
-import { InMemoryFileHandle } from 'jappend/tests/InMemoryFileHandle';
+import { InMemoryFileHandle } from 'jappend/dist/tests/InMemoryFileHandle';
 
 // Create an in-memory file handle for testing
 const inMemoryFileHandle = new InMemoryFileHandle({
