@@ -17,8 +17,8 @@
   "main": "dist/jappend.js",
   "types": "dist/jappend.d.ts",
   "files": [
-    "dist/*.js",
-    "dist/*.d.ts"
+    "dist/**/*.js",
+    "dist/**/*.d.ts"
   ],
   "scripts": {
     "benchmark": "bun ./benchmark.ts default && bun ./benchmark.ts buffer && bun ./benchmark.ts infinite-buffer && bun ./benchmark.ts library",
